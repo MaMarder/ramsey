@@ -17,11 +17,10 @@ import haiku as hk
 
 from jax import numpy as jnp, random
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 
 from ramsey.train import train_sparse_gaussian_process
 from ramsey.data import sample_from_gaussian_process
-from ramsey.covariance_functions import ExponentiatedQuadratic
+from ramsey.covariance_functions import Linear, ExponentiatedQuadratic
 from ramsey.models import SparseGP
 
 from jax.config import config
@@ -38,10 +37,9 @@ def data(key, rho, sigma, n=1000):
 
 
 def _gaussian_process(**kwargs):
-    kernel = ExponentiatedQuadratic()
-    m = 50
-    jitter = 10e-8
-    gp = SparseGP(kernel, m, jitter)
+    kernel = Linear() + ExponentiatedQuadratic()
+    m = 30
+    gp = SparseGP(kernel, m)
     return gp(**kwargs)
 
 
@@ -56,8 +54,7 @@ def train_gp(key, x, y):
         train_key,
         x=x,
         y=y,
-        n_iter=1000,
-        stepsize=0.005
+        n_iter=2500
     )
 
     return gaussian_process, params
@@ -69,10 +66,10 @@ def plot(key, gaussian_process, params, x, y, f, train_idxs):
     m = jnp.shape(x_m)[0]
     n = jnp.shape(train_idxs)[0]
 
-    _, ax = plt.subplots(figsize=(15, 6))
+    fig, ax = plt.subplots(figsize=(15, 6))
     srt_idxs = jnp.argsort(jnp.squeeze(x))
 
-    ax.set_title(f'Sparse GP\nTraining Points: n={n}, Inducing Points: m={m}')
+    ax.set_title(f'Sparse GP\nTraining Points: n={n}, Inducing Points: m={m}', fontsize=1.25*20)
     ax.plot(
         jnp.squeeze(x)[srt_idxs],
         jnp.squeeze(f)[srt_idxs],
@@ -84,7 +81,9 @@ def plot(key, gaussian_process, params, x, y, f, train_idxs):
         jnp.squeeze(y[train_idxs, :]),
         color="red",
         marker="+",
-        alpha=0.5,
+        s=50,
+        alpha=0.75,
+        label="Training data"
     )
 
     ax.scatter(
@@ -92,7 +91,9 @@ def plot(key, gaussian_process, params, x, y, f, train_idxs):
         jnp.squeeze(y_m),
         color="green",
         marker="*",
-        alpha=0.5,
+        s=50,
+        alpha=0.75,
+        label="Inducing points"
     )
 
     posterior_dist = gaussian_process.apply(
@@ -105,7 +106,10 @@ def plot(key, gaussian_process, params, x, y, f, train_idxs):
 
     y_star = posterior_dist.mean()
     ax.plot(
-        jnp.squeeze(x)[srt_idxs], jnp.squeeze(y_star)[srt_idxs], color="blue"
+        jnp.squeeze(x)[srt_idxs], 
+        jnp.squeeze(y_star)[srt_idxs], 
+        color="blue", alpha=0.75,
+        label="Posterior mean"
     )
 
     sigma = posterior_dist.stddev()
@@ -114,32 +118,24 @@ def plot(key, gaussian_process, params, x, y, f, train_idxs):
     ax.fill_between(
         jnp.squeeze(x)[srt_idxs],
         lcb[srt_idxs], ucb[srt_idxs],
-        color="grey", alpha=0.2
+        color="grey", alpha=0.2,
+        label=r'90% posterior interval'
     )
 
-    ax.legend(
-        handles=[
-            mpatches.Patch(
-                color="black",
-                alpha=0.5,
-                label="Latent function " + r"$f \sim GP$",
-            ),
-            mpatches.Patch(color="red", alpha=0.45, label="Training data"),
-            mpatches.Patch(color="green", alpha=0.45, label="Inducing points"),
-            mpatches.Patch(color="blue", alpha=0.45, label="Posterior mean"),
-            mpatches.Patch(color="grey", alpha=0.1, label=r'90% posterior interval'),
-        ],
-        loc="best",
-        frameon=False,
-    )
     ax.grid()
+    ax.tick_params('both', labelsize=20)
     ax.set_frame_on(False)
+    plt.legend( bbox_to_anchor=(0.5, -0.005),
+                loc="lower center",
+                bbox_transform=fig.transFigure, 
+                ncol=4, 
+                frameon=True, fontsize=20, facecolor='white', framealpha=1)
     plt.show()
 
 
 def run():
     rng_seq = hk.PRNGSequence(14)
-    n_train = 150
+    n_train = 200
 
     (x, y), f = data(next(rng_seq), 0.25, 3.0)
     train_idxs = random.choice(

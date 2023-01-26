@@ -63,7 +63,8 @@ def train_neural_process(
             y_target,
         )
         objectives[_] = loss_value
-        if (_ % 1000 == 0 or _ == n_iter) - 1 and verbose:
+        if ((_ % 100 == 0) or (_ == n_iter-1)) and verbose:
+
             elbo = -float(loss_value)
             print(f"ELBO at {_}: {elbo}")
 

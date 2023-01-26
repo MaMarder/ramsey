@@ -19,9 +19,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 import haiku as hk
-import jax
 from jax import numpy as jnp, random
-from distrax import Normal
 from ramsey.data import sample_from_gaussian_process
 from ramsey.contrib.models import BayesianLinear, BayesianNeuralNetwork
 from ramsey.contrib.train import train_model
@@ -62,7 +60,6 @@ def _plot_loss(bayesian_nn_loss, std_nn_loss):
     [(ax.plot(
             jnp.arange(len(losses[_])),
             jnp.squeeze(losses[_]),
-            # color="black",
             alpha=0.5,
             label=labels[_]
         ),
@@ -73,68 +70,78 @@ def _plot_loss(bayesian_nn_loss, std_nn_loss):
 
 def _plot_bayesian_nn_samples(rng, ax, nn, nn_params, x, n_samples = 10):
 
-    y_s = [nn.apply(params=nn_params,rng=next(rng),x=x) for _ in range(n_samples)]
+    y_s_list = []
+
+    for _ in range(n_samples):
+        y_s = nn.apply(params=nn_params,rng=next(rng),x=x)
+        y_s_list.append(y_s)
 
     srt_idxs = jnp.argsort(jnp.squeeze(x))
 
     [ax.plot(
-        jnp.squeeze(x)[srt_idxs], jnp.squeeze(y)[srt_idxs], color="blue", alpha = 0.1
-    ) for y in y_s]
+        jnp.squeeze(x)[srt_idxs], jnp.squeeze(y_s)[srt_idxs], color="blue", alpha = 0.1
+    ) for y_s in y_s_list]
 
 def _plot_bayesian_nn_mean_std(rng, ax, nn, nn_params, x, n_samples = 100):
 
-    y_s = [nn.apply(params=nn_params,rng=next(rng),x=x) for _ in range(n_samples)]
+    l = []
 
-    y_s = jnp.squeeze(jnp.stack([y for y in y_s]))
+    for _ in range(n_samples):
+        y_s = nn.apply(params=nn_params,rng=next(rng),x=x)
+        l.append(y_s)
 
-    mean = jnp.mean(y_s, axis=0)
-    sigma = jnp.std(y_s, axis=0)
+    y_star = jnp.asarray(l)
+    y_star = jnp.squeeze(y_star)
+
+    mean = jnp.mean(y_star, axis=0)
+    sigma = jnp.std(y_star, axis=0)
 
     srt_idxs = jnp.argsort(jnp.squeeze(x))
 
     ax.plot(    jnp.squeeze(x)[srt_idxs], jnp.squeeze(mean)[srt_idxs],
-                color="blue", alpha = 0.5,
-                label='Posterior Mean')
+                color="blue", alpha = 0.75,
+                label='Posterior mean')
 
     ax.fill_between(jnp.squeeze(x)[srt_idxs],
                  jnp.squeeze(mean+1.644854*sigma)[srt_idxs],
                  jnp.squeeze(mean-1.644854*sigma)[srt_idxs],
-                 color="blue", alpha=0.05, label=r'90% Posterior Interval')
+                 color="grey", alpha=0.2, label=r'90% posterior interval')
 
 
 def _plot_standard_nn(rng, ax, standard_nn, standard_nn_params, x):
 
-    y_s = standard_nn.apply(params=standard_nn_params,rng=next(rng),x=x)
+    y_s = standard_nn.apply(params=standard_nn_params, rng=next(rng),x=x)
 
     srt_idxs = jnp.argsort(jnp.squeeze(x))
 
     ax.plot(    jnp.squeeze(x)[srt_idxs], jnp.squeeze(y_s)[srt_idxs],
-                color="green", alpha = 0.5,
-                label='Predictions Standard NN')
+                color="green", alpha = 0.75,
+                label='Standard NN')
 
 
 def plot(   rng,
             bayesian_nn, bayesian_nn_params, bayesian_nn_loss,
             standard_nn, standard_nn_params, standard_nn_loss,
             x, f, x_train, y_train):
-
+    
     _plot_loss(bayesian_nn_loss, standard_nn_loss)
 
-    _, ax = plt.subplots(figsize=(8, 3))
+    fig, ax = plt.subplots(figsize=(8, 3))
     srt_idxs = jnp.argsort(jnp.squeeze(x))
     ax.plot(
         jnp.squeeze(x)[srt_idxs],
         jnp.squeeze(f)[srt_idxs],
         color="black",
         alpha=0.5,
-        label="Latent function " + r"$f \sim GP$"
+        label="Latent f"
     )
     ax.scatter(
         jnp.squeeze(x_train),
         jnp.squeeze(y_train),
         color="red",
         marker="+",
-        alpha=0.2,
+        s=50,
+        alpha=0.75,
         label="Training data"
     )
 
@@ -142,13 +149,15 @@ def plot(   rng,
     _plot_bayesian_nn_samples(rng, ax, bayesian_nn, bayesian_nn_params, x)
     _plot_standard_nn(rng, ax, standard_nn, standard_nn_params, x)
 
-    ax.legend(
-        loc="best",
-        frameon=False,
-    )
     ax.grid()
-
+    ax.tick_params('both', labelsize=20)
     ax.set_frame_on(False)
+
+    plt.legend( bbox_to_anchor=(0.5, -0.005),
+            loc="lower center",
+            bbox_transform=fig.transFigure, 
+            ncol=5, 
+            frameon=True, fontsize=20, facecolor='white', framealpha=1)
     plt.show()
 
 def bayesian_nn_objective(par, key, model, x, y):
